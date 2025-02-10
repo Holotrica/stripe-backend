@@ -1,37 +1,41 @@
 // server.js
-const express = require('express');
-const cors = require('cors');
-require('dotenv').config();
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const express = require("express");
+const cors = require("cors");
+require("dotenv").config();
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
 
 // Middleware
 app.use(express.json());
-app.use(cors({
-  origin: 'http://localhost:3000', // URL frontend
-  credentials: true
-}));
+app.use(cors());
+
+app.get("/", (req, res) => {
+  res.status(200).json({
+    status: true,
+    message: "Stripe BackendAPI is running",
+  });
+});
 
 // Route untuk membuat checkout session
-app.post('/api/create-checkout-session', async (req, res) => {
+app.post("/api/create-checkout-session", async (req, res) => {
   try {
     const { cart, userId } = req.body;
 
     if (!cart || cart.length === 0) {
-      return res.status(400).json({ error: 'Cart is empty' });
+      return res.status(400).json({ error: "Cart is empty" });
     }
 
     // Transform cart items ke format yang dibutuhkan Stripe
-    const line_items = cart.map(item => ({
+    const line_items = cart.map((item) => ({
       price_data: {
-        currency: 'usd',
+        currency: "usd",
         product_data: {
           name: item.name,
           images: [item.cover],
           metadata: {
-            productId: item.id
-          }
+            productId: item.id,
+          },
         },
         unit_amount: Math.round(parseFloat(item.price) * 100), // Stripe menggunakan smallest currency unit (cents)
       },
@@ -40,46 +44,46 @@ app.post('/api/create-checkout-session', async (req, res) => {
 
     // Buat checkout session
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
+      payment_method_types: ["card"],
       line_items,
-      mode: 'payment',
+      mode: "payment",
       success_url: `${process.env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.FRONTEND_URL}/cart`,
       metadata: {
-        userId: userId
+        userId: userId,
       },
     });
 
     res.json({ url: session.url });
   } catch (error) {
-    console.error('Error creating checkout session:', error);
-    res.status(500).json({ error: 'Failed to create checkout session' });
+    console.error("Error creating checkout session:", error);
+    res.status(500).json({ error: "Failed to create checkout session" });
   }
 });
 
 // Basic webhook handler untuk development
-app.post('/webhook', express.json(), async (request, response) => {
+app.post("/webhook", express.json(), async (request, response) => {
   const event = request.body;
 
   try {
     switch (event.type) {
-      case 'checkout.session.completed':
+      case "checkout.session.completed":
         const session = event.data.object;
         // Handle successful payment
-        console.log('Payment successful:', session.id);
+        console.log("Payment successful:", session.id);
         break;
-      case 'payment_intent.payment_failed':
+      case "payment_intent.payment_failed":
         const paymentIntent = event.data.object;
-        console.log('Payment failed:', paymentIntent.id);
+        console.log("Payment failed:", paymentIntent.id);
         break;
       default:
         console.log(`Unhandled event type ${event.type}`);
     }
 
-    response.json({received: true});
+    response.json({ received: true });
   } catch (err) {
-    console.error('Webhook error:', err);
-    response.status(500).send('Webhook processing failed');
+    console.error("Webhook error:", err);
+    response.status(500).send("Webhook processing failed");
   }
 });
 
